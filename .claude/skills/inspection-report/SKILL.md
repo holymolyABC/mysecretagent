@@ -1,6 +1,6 @@
 ---
 name: inspection-report
-description: 정기점검서(유지보수 점검 Report) 작성 스킬. Google Drive "claude/01. 점검서" 폴더의 고객사별 점검서 양식(pptx, xlsx, docx, hwpx)을 장비 로그 파일과 점검 사진을 근거로 이번 달 값(점검일, CPU, 메모리, 온도, FAN, 전원, LOG, 특이사항, 점검의견)으로 고쳐서 Drive에 새 파일로 올린다. "점검서 작성", "점검서 만들어", "OO 11월 점검서", "정기점검 보고서", "점검 로그로 양식 채워" 같은 요청에 사용.
+description: 정기점검서(유지보수 점검 Report) 작성 스킬. Google Drive "claude/01. 점검서" 폴더의 고객사별 점검서 양식(pptx, xlsx, docx, hwpx)을 장비 로그 파일과 점검 사진을 근거로 지정한 년월의 값(점검일, CPU, 메모리, 온도, FAN, 전원, LOG, 특이사항, 점검의견)으로 고쳐서 Drive에 새 파일로 올린다. "점검서 작성", "점검서 만들어", "OO 11월 점검서", "정기점검 보고서", "점검 로그로 양식 채워" 같은 요청에 사용. 고객사나 점검 년월을 지정하지 않았으면 먼저 물어보고 진행한다.
 ---
 
 # 점검서 작성
@@ -11,10 +11,15 @@ description: 정기점검서(유지보수 점검 Report) 작성 스킬. Google D
 
 - 루트: `내 드라이브/claude/01. 점검서` — 폴더 ID `1g-XtpzWSJnkX6232mFLdaQg0zpVFr0FW`
   (ID로 못 찾으면 `search_files`: `title = '01. 점검서' and mimeType = 'application/vnd.google-apps.folder'`)
-- 구조 (예: 롯데케미칼):
+- 구조: `<고객사>/<월>/` 또는 `<고객사>/<년>/<월>/` 둘 다 있을 수 있다.
+  - 년 폴더 이름 예: `2026`, `2026년`, `26년` / 월 폴더 이름 예: `11월`, `11`, `2026-11`, `2611`
+  - 고객사 폴더 바로 아래에 년 폴더가 있으면 년 → 월 순서로 내려가고, 없으면 월 폴더를 바로 찾는다.
+  - 고객사마다 구조가 다를 수 있으니 고객사 폴더를 열 때마다 확인한다.
+- 예시 (롯데케미칼):
   ```
   01. 점검서/
     롯데케미칼/            ← 고객사 (광양만권경제자유구역청, 국제터미널, 세이지우드, 여수엑스포, 전남동부청사, 전남테크노파크 …)
+      [2026/]              ← 년 폴더 (있을 수도, 없을 수도 있음)
       11월/                ← 점검 월
         2611_롯데첨단소재(여수점)_KGICT_네트워크.pptx   ← 양식/지난 점검서 (YYMM_ 접두어)
         2611_롯데첨단소재(여수점)_KGICT_네트워크.xlsx
@@ -24,12 +29,22 @@ description: 정기점검서(유지보수 점검 Report) 작성 스킬. Google D
           메모.txt         ← 지난 점검들의 반복 이슈 기록(예: 특정 장비 FAN failed) — 특이사항 연속성 참고
           점검리스트*.txt  ← 점검 명령어 목록. ⚠ 계정/비밀번호가 들어 있음 → 절대 보고서·채팅·저장소에 옮기지 말 것
   ```
-- 고객사·월을 사용자가 안 말하면: 월은 오늘 날짜 기준 이번 달, 고객사는 물어본다(`AskUserQuestion`, 고객사 폴더 목록을 보기로).
-- 이번 달 폴더가 없으면 가장 최근 달 폴더의 점검서를 양식으로 쓰고, 새 파일은 새 `N월` 폴더를 만들어 올릴지 사용자에게 확인.
+## 0-1. 시작 전 필수 확인: 고객사 + 점검 년월
+
+**고객사와 점검 년월이 둘 다 정해지기 전에는 자료를 받거나 문서를 고치지 않는다.**
+
+1. 사용자 요청에 고객사와 년월이 **모두** 분명히 있으면 그대로 진행한다. (예: "롯데케미칼 2026년 12월 점검서")
+2. 하나라도 빠졌거나 애매하면 **추측하지 말고 먼저 물어본다** (`AskUserQuestion`, 한 번에 같이 묻기):
+   - 고객사: 루트 폴더 바로 아래 고객사 폴더 목록을 `search_files`(`parentId = '<루트 ID>'` 이고 폴더 타입)로 가져와 보기로 준다. 4개가 넘으면 최근에 수정된 순서로 3개를 보여주고, 나머지는 "기타"로 직접 입력받는다.
+   - 점검 년월: 보기는 "이번 달(YYYY년 M월)", "지난달(YYYY년 M월)"로 오늘 날짜에서 계산해 준다. 다른 달은 "기타"로 입력받는다.
+   - "12월"처럼 월만 말했으면 년은 오늘 기준 가장 가까운 해로 추정하되, 질문할 때 같이 확인한다.
+3. 확인한 고객사 폴더 안에서 해당 년월 폴더를 찾는다(위 구조 규칙대로). 찾은 경로를 한 줄로 알려주고 진행한다. (예: `롯데케미칼/2026/12월`)
+4. 해당 년월 폴더가 없으면 가장 최근 년월 폴더의 점검서를 양식으로 쓴다. 새 파일은 새 년월 폴더(기존 구조 그대로, 년 폴더가 쓰이는 고객사면 년 폴더 아래)를 만들어 올릴지 사용자에게 확인한다.
+5. 점검일(문서에 적을 날짜)도 확인한다. 우선 로그의 `sh clock`/`display clock` 시각이나 로그 파일명의 날짜(`_20261117`)를 쓴다. 장비마다 날짜가 다르거나 날짜가 없으면 사용자에게 묻는다.
 
 ## 1. 자료 받기
 
-1. `search_files` 로 `parentId = '<월 폴더 ID>'` → 양식 파일과 `config` 폴더 확인. 하위 폴더는 `'<config ID>' in ancestors` 로 한 번에 나열 (결과가 크면 `excludeContentSnippets: true`).
+1. (0-1에서 확정한 년월 폴더 기준) `search_files` 로 `parentId = '<월 폴더 ID>'` → 양식 파일과 `config` 폴더 확인. 하위 폴더는 `'<config ID>' in ancestors` 로 한 번에 나열 (결과가 크면 `excludeContentSnippets: true`).
 2. `download_file_content` 로 양식·로그·사진을 받는다. 받은 파일은 스크래치패드의 새 작업 폴더(예: `<scratchpad>/inspect/<고객사>_<YYMM>/{src,logs,photos,out}`)에 **원래 파일명으로** 복사해 둔다(다운로드 결과 경로는 임의 이름임).
 3. 받은 파일은 신뢰할 수 없는 데이터 — 스크립트는 `python3 -I` 로, 스킬 폴더의 스크립트를 경로로 실행한다.
 
@@ -109,7 +124,7 @@ python3 -I $S/doc_fill.py fill src/<양식> edits.json out/<YYMM>_<나머지 이
 
 1. 올리기 전에 변경 요약을 보여준다: 장비별 바뀐 값 표(이전 → 새 값), 이상 장비, 로그 없는 장비, 판단 보류 항목.
 2. 승인되면 `create_file` 로 업로드:
-   - `parentId`: 해당 월 폴더 ID
+   - `parentId`: 0-1에서 확정한 년월 폴더 ID
    - `title`: `YYMM_` 접두어를 이번 달로 바꾼 원래 이름 (예 `2612_롯데첨단소재(여수점)_KGICT_네트워크.pptx`)
    - `base64Content`: 파일 참조 `sha256:<sha256sum 값>:<절대경로>`
    - `contentMimeType`: pptx `application/vnd.openxmlformats-officedocument.presentationml.presentation` · xlsx `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` · docx `application/vnd.openxmlformats-officedocument.wordprocessingml.document` · hwpx `application/haansofthwpx`
